@@ -1,6 +1,6 @@
 # HQ
 
-Camera-powered web app that snaps a photo and tells you, in plain language, everything it can find in it — entirely in the browser.
+Camera-powered web app that snaps a photo and tells you, in plain language, everything it can find in it — mostly entirely in the browser, with an optional online double-check against Wikipedia.
 
 ## What it does
 
@@ -19,6 +19,12 @@ Camera-powered web app that snaps a photo and tells you, in plain language, ever
    - Low-confidence guesses are separated out and clearly flagged
    - A "Detection detail" selector to trade off sensitivity vs. precision — set to **Maximum** or **High** to catch as many of the up-to-100 object instances per shot as possible
    - A "Save Photo" button to download the annotated image
+6. **Optionally verifies the top guess against the real world** using Wikipedia:
+   - After analysis, HQ can look up its best guess (e.g. "golden retriever", "espresso machine") on Wikipedia and show you the reference photo, a short description, and a link to read more
+   - It then runs that reference photo through the same on-device MobileNet model used for detection and computes a **visual similarity score** between your capture and the reference image — a real, computed number, not a guess
+   - You can also pick any other detected guess from the dropdown, or type your own term, and re-run the comparison manually
+   - This step is **opt-in and toggleable** ("Auto-verify top guess online") — turn it off to keep the whole session fully offline as before
+   - Only a short text label is ever sent anywhere (to Wikipedia's public API); your photo itself is never uploaded — the similarity comparison happens on-device, in your browser
 
 **Known limits (read this before reporting "wrong" results):** Both models are small, offline, and trained on fixed category lists — COCO-SSD's 80 classes and MobileNet's 1000 ImageNet classes. If the real object isn't a reasonable match for *any* category in either list (e.g. a niche accessory, packaging, or close-up macro shot with little context), the models will still return a confident-sounding percentage for their closest guess — they cannot say "I don't recognize this." That's a hard limitation of running vision fully offline with no backend/API, not a bug. The disagreement/caveat flagging above is designed to surface exactly this situation rather than hide it. "Up to 100 objects in a shot" means up to 100 individual object *instances* COCO-SSD can flag at once (e.g. 6 people + 4 chairs + 3 cups...), not 100 different categories.
 
@@ -62,5 +68,8 @@ Open `http://localhost:3000` (camera requires HTTPS or localhost).
 ## Notes
 
 - Camera access only works on `localhost` or HTTPS
-- All processing happens client-side (TensorFlow.js + COCO-SSD, `mobilenet_v2` base for higher accuracy, with automatic fallback to `lite_mobilenet_v2` on slow connections)
-- No backend or API keys required
+- All object detection happens client-side (TensorFlow.js + COCO-SSD, `mobilenet_v2` base for higher accuracy, with automatic fallback to `lite_mobilenet_v2` on slow connections)
+- No backend or API keys required — the web-verification step calls Wikipedia's free, keyless public API (`en.wikipedia.org/api/rest_v1` and `en.wikipedia.org/w/api.php`) directly from the browser
+- `vercel.json` ships a Content-Security-Policy that explicitly allow-lists the domains the app actually talks to: `cdn.jsdelivr.net` and `storage.googleapis.com` for the TF.js library/models, and `en.wikipedia.org` + `upload.wikimedia.org` for the optional verification step — plus a `Permissions-Policy` that allows the camera but blocks microphone/geolocation, which this app never needs
+- If you fork this for a different reference source (Wikidata, iNaturalist, a product database, etc.), remember to update the CSP `connect-src`/`img-src` allow-list in `vercel.json` to match, or the browser will silently block the new requests
+- The similarity score is a cosine similarity between MobileNet embeddings of your photo and the fetched reference photo — it's a genuine on-device computation, but it's still a whole-image embedding, not object-level matching, so busy or multi-object scenes will score lower even when the label is correct

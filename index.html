@@ -413,6 +413,186 @@
       font-size: 0.95rem;
       max-width: 280px;
     }
+
+    /* ---- Web verification ---- */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .toggle-row label {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      cursor: pointer;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .verify-box {
+      margin-top: 0.4rem;
+    }
+
+    .verify-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .verify-controls select,
+    .verify-controls input[type="text"] {
+      font-family: inherit;
+      font-size: 0.85rem;
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 0.55rem 0.7rem;
+    }
+
+    .verify-controls select {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .verify-controls input[type="text"] {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .verify-btn {
+      background: rgba(0,212,255,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(0,212,255,0.3);
+      font-size: 0.85rem;
+      padding: 0.6rem 1rem;
+    }
+
+    .verify-btn:hover:not(:disabled) {
+      background: rgba(0,212,255,0.2);
+    }
+
+    .verify-status {
+      font-size: 0.83rem;
+      color: var(--muted);
+      min-height: 1.2em;
+      margin-bottom: 0.3rem;
+    }
+
+    .verify-status.error { color: var(--danger); }
+
+    .verify-empty {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .verify-compare {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.7rem;
+    }
+
+    .verify-img-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+      min-width: 0;
+    }
+
+    .verify-thumb {
+      width: 100%;
+      aspect-ratio: 1/1;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: #000;
+    }
+
+    .verify-thumb-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .verify-img-tag {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .verify-vs {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .sim-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .sim-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      width: 8.5rem;
+    }
+
+    .sim-pct {
+      font-size: 0.8rem;
+      color: var(--muted);
+      min-width: 2.6rem;
+      text-align: right;
+    }
+
+    .sim-caption {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+    }
+
+    .verify-title {
+      font-size: 0.98rem;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+
+    .verify-extract {
+      font-size: 0.87rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 0.5rem;
+    }
+
+    .verify-link {
+      font-size: 0.83rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .verify-link:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -447,6 +627,10 @@
       </select>
     </div>
 
+    <div class="toggle-row" id="autoVerifyRow" style="display:none">
+      <label for="autoVerify"><input type="checkbox" id="autoVerify" checked> Auto-verify top guess online (Wikipedia)</label>
+    </div>
+
     <div class="status" id="status"></div>
     <div class="loader" id="loader"></div>
 
@@ -463,11 +647,22 @@
 
       <div class="section-label" id="broadLabel" style="display:none">Broader guesses (1000-category classifier, whole image, no position)</div>
       <div class="category-list" id="broadList"></div>
+
+      <div class="section-label" id="verifyLabel" style="display:none">🌐 Web verification</div>
+      <div class="verify-box" id="verifyBox" style="display:none">
+        <div class="verify-controls">
+          <select id="verifySelect" style="display:none"></select>
+          <input type="text" id="verifyInput" placeholder="Or type what you think it is…">
+          <button class="verify-btn" id="verifyBtn">🔍 Compare with Wikipedia</button>
+        </div>
+        <div class="verify-status" id="verifyStatus"></div>
+        <div id="verifyResult"></div>
+      </div>
     </div>
   </div>
 
   <footer>
-    HQ · Runs entirely in your browser, nothing is uploaded anywhere · Two on-device models: COCO-SSD (80 categories, gives positions/boxes) + MobileNet (1000 ImageNet categories, whole-image, catches things COCO-SSD's narrow vocabulary misses) · Even together, an object outside both vocabularies will still be misidentified — that's a hard limit of running vision fully offline in a browser
+    HQ · Runs entirely in your browser, nothing is uploaded anywhere · Two on-device models: COCO-SSD (80 categories, gives positions/boxes) + MobileNet (1000 ImageNet categories, whole-image, catches things COCO-SSD's narrow vocabulary misses) · Even together, an object outside both vocabularies will still be misidentified — that's a hard limit of running vision fully offline in a browser · Optional web verification sends only a short text guess (never the photo) to Wikipedia's public API, fetches a public reference photo, and compares it to your capture on-device
   </footer>
 
   <script>
@@ -495,11 +690,21 @@
     const camTagText = document.getElementById('camTagText');
     const sensitivityRow = document.getElementById('sensitivityRow');
     const sensitivitySelect = document.getElementById('sensitivity');
+    const autoVerifyRow = document.getElementById('autoVerifyRow');
+    const autoVerifyCheckbox = document.getElementById('autoVerify');
+    const verifyLabel = document.getElementById('verifyLabel');
+    const verifyBox = document.getElementById('verifyBox');
+    const verifySelect = document.getElementById('verifySelect');
+    const verifyInput = document.getElementById('verifyInput');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const verifyStatus = document.getElementById('verifyStatus');
+    const verifyResultEl = document.getElementById('verifyResult');
 
     let stream = null;
     let cocoModel = null;
     let netModel = null;
     let isAnalyzing = false;
+    let isVerifying = false;
     let facingMode = 'environment';
     let hasMultipleCameras = false;
     let lastCaptureDataUrl = null;
@@ -824,6 +1029,7 @@
         downloadBtn.style.display = 'inline-flex';
 
         buildResults(predictions, netPredictions);
+        setupVerification(predictions, netPredictions);
 
         resultCard.classList.add('visible');
         const gotSomething = predictions.length > 0 || netPredictions.length > 0;
@@ -862,6 +1068,15 @@
       detailsToggle.textContent = '▸ Show every individual detection';
       broadLabel.style.display = 'none';
       broadListEl.innerHTML = '';
+      verifyLabel.style.display = 'none';
+      verifyBox.style.display = 'none';
+      autoVerifyRow.style.display = 'none';
+      verifySelect.style.display = 'none';
+      verifySelect.innerHTML = '';
+      verifyInput.value = '';
+      verifyStatus.textContent = '';
+      verifyStatus.className = 'verify-status';
+      verifyResultEl.innerHTML = '';
       snapBtn.style.display = 'inline-flex';
       retryBtn.style.display = 'none';
       downloadBtn.style.display = 'none';
@@ -881,6 +1096,261 @@
     retryBtn.addEventListener('click', retry);
     switchBtn.addEventListener('click', switchCamera);
     downloadBtn.addEventListener('click', downloadPhoto);
+
+    // =========================================================
+    // Web verification: fetch a public Wikipedia summary + photo
+    // for a guessed label, and compare it to the capture using
+    // the already-loaded MobileNet embedding (on-device, no
+    // photo ever leaves the browser — only the short text guess
+    // is sent to Wikipedia's public API).
+    // =========================================================
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str == null ? '' : String(str);
+      return div.innerHTML;
+    }
+
+    function truncateText(str, n) {
+      if (!str) return '';
+      if (str.length <= n) return str;
+      return str.slice(0, n).replace(/\s+\S*$/, '') + '…';
+    }
+
+    function buildCandidateLabels(predictions, netPredictions) {
+      const groups = {};
+      (predictions || []).forEach(p => {
+        groups[p.class] = Math.max(groups[p.class] || 0, p.score);
+      });
+      const map = new Map();
+      Object.entries(groups).forEach(([name, score]) => map.set(name.toLowerCase(), { label: name, score }));
+      (netPredictions || []).forEach(p => {
+        const name = cleanClassName(p.className);
+        const key = name.toLowerCase();
+        const existing = map.get(key);
+        if (!existing || existing.score < p.probability) {
+          map.set(key, { label: name, score: p.probability });
+        }
+      });
+      return Array.from(map.values()).sort((a, b) => b.score - a.score);
+    }
+
+    function setupVerification(predictions, netPredictions) {
+      const candidates = buildCandidateLabels(predictions, netPredictions);
+
+      verifyLabel.style.display = 'block';
+      verifyBox.style.display = 'block';
+      verifyStatus.textContent = '';
+      verifyStatus.className = 'verify-status';
+      verifyResultEl.innerHTML = '';
+
+      if (candidates.length > 0) {
+        verifySelect.style.display = 'block';
+        verifySelect.innerHTML = candidates.slice(0, 8).map(c =>
+          `<option value="${escapeHtml(c.label)}">${escapeHtml(capitalize(c.label))} (${Math.round(c.score * 100)}%)</option>`
+        ).join('');
+        verifyInput.value = candidates[0].label;
+        autoVerifyRow.style.display = 'flex';
+      } else {
+        verifySelect.style.display = 'none';
+        verifySelect.innerHTML = '';
+        verifyInput.value = '';
+        autoVerifyRow.style.display = 'none';
+      }
+
+      if (candidates.length > 0 && autoVerifyCheckbox.checked) {
+        verifyOnline(candidates[0].label);
+      }
+    }
+
+    async function fetchWikipediaSummary(term) {
+      const encoded = encodeURIComponent(term.trim());
+      try {
+        let res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`, {
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (res.status === 404) {
+          const alt = await wikipediaOpenSearch(term, 1);
+          if (!alt.length) return null;
+          res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(alt[0])}`, {
+            headers: { 'Accept': 'application/json' }
+          });
+        }
+
+        if (!res.ok) return null;
+        let data = await res.json();
+
+        if (data.type === 'disambiguation') {
+          const alts = await wikipediaOpenSearch(term, 4);
+          const nextTitle = alts.find(t => t.toLowerCase() !== data.title.toLowerCase());
+          if (nextTitle) {
+            const res2 = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(nextTitle)}`, {
+              headers: { 'Accept': 'application/json' }
+            });
+            if (res2.ok) data = await res2.json();
+          }
+        }
+
+        return data;
+      } catch (err) {
+        console.error('Wikipedia lookup failed', err);
+        throw err;
+      }
+    }
+
+    async function wikipediaOpenSearch(term, limit) {
+      try {
+        const url = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(term)}&limit=${limit}&namespace=0&format=json&origin=*`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data && data[1]) || [];
+      } catch (err) {
+        console.error('Wikipedia opensearch failed', err);
+        return [];
+      }
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    }
+
+    function cosineSimilarity(embA, embB) {
+      return tf.tidy(() => {
+        const a = embA.reshape([-1]);
+        const b = embB.reshape([-1]);
+        const dot = tf.sum(tf.mul(a, b));
+        const denom = tf.norm(a).mul(tf.norm(b));
+        return dot.div(denom).dataSync()[0];
+      });
+    }
+
+    async function computeVisualSimilarity(referenceImgEl) {
+      if (!netModel || !lastCaptureDataUrl) return null;
+      let embA, embB;
+      try {
+        const capturedImg = await loadImage(lastCaptureDataUrl);
+        if (!capturedImg) return null;
+        embA = netModel.infer(capturedImg, true);
+        embB = netModel.infer(referenceImgEl, true);
+        return cosineSimilarity(embA, embB);
+      } catch (err) {
+        console.error('Similarity computation failed (likely a CORS-protected image)', err);
+        return null;
+      } finally {
+        if (embA) embA.dispose();
+        if (embB) embB.dispose();
+      }
+    }
+
+    function similarityCaption(pct) {
+      if (pct >= 65) return 'Strong visual match — this looks right.';
+      if (pct >= 40) return 'Partial match — plausible, but worth a second look.';
+      return 'Weak match — the guess may be off, or the reference photo is a poor example.';
+    }
+
+    function renderVerification(term, data, similarity) {
+      if (!data) {
+        verifyResultEl.innerHTML = `<p class="verify-empty">No Wikipedia match found for "${escapeHtml(capitalize(term))}". Try another guess from the list, or type your own search above.</p>`;
+        return;
+      }
+
+      const extract = truncateText(data.extract || '', 260);
+      const link = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page)
+        || `https://en.wikipedia.org/wiki/${encodeURIComponent(data.title)}`;
+      const thumb = data.thumbnail && data.thumbnail.source;
+
+      let simHtml = '';
+      if (typeof similarity === 'number' && !Number.isNaN(similarity)) {
+        const pct = Math.max(0, Math.min(100, Math.round(similarity * 100)));
+        const level = pct >= 65 ? 'success' : pct >= 40 ? 'warn' : 'danger';
+        simHtml = `
+          <div class="sim-row">
+            <div class="sim-label">Visual similarity</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--${level})"></div></div>
+            <div class="sim-pct">${pct}%</div>
+          </div>
+          <p class="sim-caption">${similarityCaption(pct)}</p>`;
+      }
+
+      verifyResultEl.innerHTML = `
+        <div class="verify-compare">
+          <div class="verify-img-col">
+            <img src="${lastCaptureDataUrl}" class="verify-thumb" alt="Your photo">
+            <span class="verify-img-tag">Your photo</span>
+          </div>
+          <div class="verify-vs">vs</div>
+          <div class="verify-img-col">
+            ${thumb
+              ? `<img src="${thumb}" class="verify-thumb" alt="${escapeHtml(data.title)}" crossorigin="anonymous">`
+              : `<div class="verify-thumb verify-thumb-empty">No image</div>`}
+            <span class="verify-img-tag">Wikipedia reference</span>
+          </div>
+        </div>
+        ${simHtml}
+        <div class="verify-title">${escapeHtml(data.title)}</div>
+        <p class="verify-extract">${escapeHtml(extract)}</p>
+        <a href="${link}" target="_blank" rel="noopener noreferrer" class="verify-link">Read more on Wikipedia ↗</a>
+      `;
+    }
+
+    async function verifyOnline(termInput) {
+      const term = (termInput || verifyInput.value || '').trim();
+      if (!term || isVerifying) return;
+
+      isVerifying = true;
+      verifyBtn.disabled = true;
+      verifyResultEl.innerHTML = '';
+      verifyStatus.className = 'verify-status';
+      verifyStatus.textContent = `Checking Wikipedia for "${term}"…`;
+
+      try {
+        const data = await fetchWikipediaSummary(term);
+
+        if (!data) {
+          verifyStatus.textContent = '';
+          renderVerification(term, null, null);
+          return;
+        }
+
+        let similarity = null;
+        if (data.thumbnail && data.thumbnail.source && netModel) {
+          verifyStatus.textContent = 'Comparing images on-device…';
+          const refImg = await loadImage(data.thumbnail.source);
+          if (refImg) similarity = await computeVisualSimilarity(refImg);
+        }
+
+        verifyStatus.textContent = '';
+        renderVerification(term, data, similarity);
+      } catch (err) {
+        console.error(err);
+        verifyStatus.className = 'verify-status error';
+        verifyStatus.textContent = 'Could not reach Wikipedia — check your connection.';
+      } finally {
+        verifyBtn.disabled = false;
+        isVerifying = false;
+      }
+    }
+
+    verifySelect.addEventListener('change', () => {
+      verifyInput.value = verifySelect.value;
+    });
+
+    verifyBtn.addEventListener('click', () => verifyOnline());
+
+    verifyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        verifyOnline();
+      }
+    });
   </script>
 </body>
 </html>
