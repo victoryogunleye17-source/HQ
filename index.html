@@ -593,6 +593,74 @@
     .verify-link:hover {
       text-decoration: underline;
     }
+
+    /* ---- Explainability: COCO feature notes + MobileNet heatmap ---- */
+    .feature-note {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+      margin: -0.15rem 0 0.1rem 1.75rem;
+    }
+
+    .category-row-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .why-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .why-btn {
+      background: rgba(255,179,0,0.1);
+      color: var(--warn);
+      border: 1px solid rgba(255,179,0,0.28);
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 0.3rem 0.65rem;
+      border-radius: 999px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .why-btn:hover:not(:disabled) {
+      background: rgba(255,179,0,0.18);
+    }
+
+    .why-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .heatmap-panel {
+      margin: 0.4rem 0 0.3rem 1.75rem;
+      padding: 0.7rem;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+    }
+
+    .heatmap-panel img {
+      width: 100%;
+      max-width: 260px;
+      border-radius: 10px;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .heatmap-caption {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .heatmap-status {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -711,6 +779,93 @@
 
     const MAX_BOXES = 100;
     const CONFIDENT_THRESHOLD = 0.5;
+
+    // Curated, general domain knowledge — NOT extracted from the model itself.
+    // COCO-SSD's 80 classes are fixed, so a short "typically identified by"
+    // note per class is honest and useful: it explains what a category
+    // usually looks like, not what the network's weights actually computed.
+    const COCO_FEATURES = {
+      person: 'upright posture, limbs, head/face proportions, clothing texture',
+      bicycle: 'two wheels, thin frame triangle, handlebars',
+      car: 'boxy body panels, windows band, wheels, headlights',
+      motorcycle: 'two wheels, engine block, low seat, handlebars',
+      airplane: 'long fuselage, wings, tail fin',
+      bus: 'large rectangular body, row of windows, wheels',
+      train: 'long segmented body, rail-level wheels, front coupler',
+      truck: 'boxy cab plus cargo bed/container, large wheels',
+      boat: 'hull shape, waterline, deck/mast if visible',
+      'traffic light': 'vertical housing, 2–3 stacked colored lenses',
+      'fire hydrant': 'short cylindrical body, colored paint, cap nozzles',
+      'stop sign': 'red octagon shape, white border, bold letters',
+      'parking meter': 'thin pole, small head unit, coin/display slot',
+      bench: 'horizontal slats, legs, simple frame',
+      bird: 'small body, wings, beak, feather texture',
+      cat: 'pointed ears, whiskers, compact furry body, tail',
+      dog: 'snout, floppy/pointed ears, furry body, four legs, tail',
+      horse: 'long legs, mane, long snout, large body',
+      sheep: 'woolly texture, compact body, short legs',
+      cow: 'large body, horns/ears, patterned coat, udder',
+      elephant: 'large ears, trunk, thick grey skin, tusks',
+      bear: 'bulky furry body, round ears, short snout',
+      zebra: 'black-and-white stripe pattern, horse-like body',
+      giraffe: 'very long neck, patchy coat pattern, tall legs',
+      backpack: 'straps, rectangular padded body, zippers',
+      umbrella: 'radial ribs under a curved canopy, central pole',
+      handbag: 'strap/handle, closed pouch shape, stitched seams',
+      tie: 'long narrow strip, knot at collar, hangs vertically',
+      suitcase: 'rigid rectangular shell, handle, wheels/zip trim',
+      frisbee: 'flat circular disc, smooth rim',
+      skis: 'long narrow parallel boards, upturned tips',
+      snowboard: 'single wide flat board, curved edges',
+      'sports ball': 'round shape, seam/panel pattern, uniform texture',
+      kite: 'flat angular shape, tensioned fabric, tail/string',
+      'baseball bat': 'long tapered cylinder, narrow handle',
+      'baseball glove': 'webbed leather pocket, finger stalls',
+      skateboard: 'flat deck, four small wheels, trucks',
+      surfboard: 'long narrow board, pointed nose, fin',
+      'tennis racket': 'oval strung head, long handle',
+      bottle: 'narrow neck, cylindrical body, cap',
+      'wine glass': 'stem, round bowl, flat base',
+      cup: 'cylindrical body, handle, open rim',
+      fork: 'tines at one end, slim handle',
+      knife: 'flat blade edge, handle grip',
+      spoon: 'oval bowl, slim handle',
+      bowl: 'wide open circular rim, rounded base',
+      banana: 'curved elongated shape, yellow peel texture',
+      apple: 'round shape, stem dimple, smooth skin',
+      sandwich: 'layered fillings between bread slices',
+      orange: 'round shape, dimpled orange-toned peel',
+      broccoli: 'clustered bumpy green florets, stalk',
+      carrot: 'tapered orange body, leafy top if present',
+      'hot dog': 'elongated bun, sausage, condiment streaks',
+      pizza: 'flat circular base, toppings, crust edge',
+      donut: 'ring shape with a center hole, glaze/toppings',
+      cake: 'layered/frosted block or round shape, decoration',
+      chair: 'seat, backrest, four legs',
+      couch: 'wide cushioned seat, armrests, backrest',
+      'potted plant': 'leaves/stems rising from a rigid pot',
+      bed: 'flat mattress plane, headboard, linens',
+      'dining table': 'flat horizontal surface, supporting legs',
+      toilet: 'bowl shape, tank, seat lid',
+      tv: 'flat rectangular screen, thin bezel, stand/mount',
+      laptop: 'hinged rectangle, keyboard base, screen lid',
+      mouse: 'small palm-sized shape, buttons, cable/sensor',
+      remote: 'narrow rectangle, grid of small buttons',
+      keyboard: 'flat rectangular grid of keys',
+      'cell phone': 'thin rectangular slab, screen face',
+      microwave: 'boxy body, door window, control panel',
+      oven: 'large box, door window/handle, control dials',
+      toaster: 'small metal box, top slots',
+      sink: 'basin bowl, faucet, drain',
+      refrigerator: 'tall rectangular body, door handle(s)',
+      book: 'flat rectangular block, spine, stacked pages',
+      clock: 'circular or rectangular face, hands or digits',
+      vase: 'narrow neck flaring to a rounded body',
+      scissors: 'crossed blades, two finger-loop handles',
+      'teddy bear': 'round ears, stitched limbs, plush texture',
+      'hair drier': 'pistol-grip handle, wide nozzle barrel',
+      toothbrush: 'slim handle, small bristled head'
+    };
 
     function setStatus(msg, type = '') {
       statusEl.textContent = msg;
@@ -865,6 +1020,123 @@
       return raw.split(',')[0].trim();
     }
 
+    // =========================================================
+    // Explainability: occlusion-based heatmap for MobileNet's
+    // broader whole-image guesses. This hides one grid cell of
+    // the photo at a time, re-runs the public classify() API,
+    // and measures how much the target class's score drops.
+    // Cells whose removal hurts the score most are highlighted —
+    // that's genuinely measured evidence of what the model relied
+    // on, not a simulated explanation. COCO-SSD's localized boxes
+    // already show *where* it looked, so this is only offered for
+    // the boxless broad guesses.
+    // =========================================================
+
+    const HEATMAP_GRID = 5;
+
+    async function scoreForLabel(canvasEl, targetNorm) {
+      const preds = await netModel.classify(canvasEl, 30);
+      const match = preds.find(p => cleanClassName(p.className).toLowerCase() === targetNorm);
+      return match ? match.probability : 0;
+    }
+
+    async function buildHeatmapOverlay(targetLabel, onProgress) {
+      if (!netModel || !lastCaptureDataUrl) return null;
+      const baseImg = await loadImage(lastCaptureDataUrl);
+      if (!baseImg) return null;
+
+      const w = baseImg.naturalWidth || baseImg.width;
+      const h = baseImg.naturalHeight || baseImg.height;
+      const targetNorm = targetLabel.toLowerCase();
+
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = w;
+      baseCanvas.height = h;
+      baseCanvas.getContext('2d').drawImage(baseImg, 0, 0, w, h);
+
+      const baseline = await scoreForLabel(baseCanvas, targetNorm);
+
+      const gridSize = HEATMAP_GRID;
+      const cellW = w / gridSize;
+      const cellH = h / gridSize;
+      const drops = [];
+      let maxDrop = 0.0001;
+      let done = 0;
+      const total = gridSize * gridSize;
+
+      for (let r = 0; r < gridSize; r++) {
+        for (let c = 0; c < gridSize; c++) {
+          const testCanvas = document.createElement('canvas');
+          testCanvas.width = w;
+          testCanvas.height = h;
+          const tctx = testCanvas.getContext('2d');
+          tctx.drawImage(baseCanvas, 0, 0);
+          tctx.fillStyle = '#7a7a7a';
+          tctx.fillRect(c * cellW, r * cellH, cellW, cellH);
+
+          const p = await scoreForLabel(testCanvas, targetNorm);
+          const drop = Math.max(0, baseline - p);
+          if (drop > maxDrop) maxDrop = drop;
+          drops.push({ r, c, drop });
+
+          done++;
+          if (onProgress) onProgress(done, total);
+        }
+      }
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = w;
+      outCanvas.height = h;
+      const octx = outCanvas.getContext('2d');
+      octx.drawImage(baseCanvas, 0, 0);
+      drops.forEach(({ r, c, drop }) => {
+        const norm = drop / maxDrop;
+        if (norm < 0.12) return;
+        octx.fillStyle = `rgba(255, ${Math.round(90 - norm * 70)}, 40, ${Math.min(0.55, norm * 0.6)})`;
+        octx.fillRect(c * cellW, r * cellH, cellW, cellH);
+      });
+
+      return { dataUrl: outCanvas.toDataURL('image/jpeg', 0.9), baseline };
+    }
+
+    broadListEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.why-btn');
+      if (!btn) return;
+
+      const label = btn.dataset.whyLabel;
+      const panel = document.getElementById(btn.dataset.whyTarget);
+      if (!panel) return;
+
+      if (!netModel) {
+        panel.style.display = 'block';
+        panel.innerHTML = `<div class="heatmap-status">Broad classifier isn't loaded, so a heatmap can't be computed.</div>`;
+        return;
+      }
+
+      panel.style.display = 'block';
+      btn.disabled = true;
+      panel.innerHTML = `<div class="heatmap-status">Testing region 0 / ${HEATMAP_GRID * HEATMAP_GRID}…</div>`;
+
+      try {
+        const result = await buildHeatmapOverlay(label, (done, total) => {
+          panel.innerHTML = `<div class="heatmap-status">Testing region ${done} / ${total}…</div>`;
+        });
+
+        if (!result) {
+          panel.innerHTML = `<div class="heatmap-status">Couldn't build a heatmap for this guess.</div>`;
+        } else {
+          panel.innerHTML = `
+            <img src="${result.dataUrl}" alt="Heatmap for ${escapeHtml(capitalize(label))}">
+            <div class="heatmap-caption">Redder regions caused the biggest score drop when hidden — meaning the model relied on them most for "${escapeHtml(capitalize(label))}" (baseline score: ${Math.round(result.baseline * 100)}%). This is measured by re-testing the photo with each region blanked out, not a simulation.</div>`;
+        }
+      } catch (err) {
+        console.error('Heatmap failed', err);
+        panel.innerHTML = `<div class="heatmap-status">Something went wrong building the heatmap.</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     function pluralize(word, count) {
       if (count === 1) return word;
       if (word.endsWith('s') || word.endsWith('sh') || word.endsWith('ch') || word.endsWith('x')) return word + 'es';
@@ -910,14 +1182,18 @@
           const pctLabel = c.min === c.max
             ? `${Math.round(c.avg * 100)}%`
             : `${Math.round(c.min * 100)}–${Math.round(c.max * 100)}%`;
+          const feature = COCO_FEATURES[c.name];
           catHtml += `
-            <div class="category-row">
-              <div class="swatch" style="background:${color}"></div>
-              <div class="category-info">
-                <div class="category-name">${capitalize(c.name)} ${c.count > 1 ? `<span class="count">×${c.count}</span>` : ''}</div>
-                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.avg*100)}%;background:${color}"></div></div>
+            <div class="category-row-wrap">
+              <div class="category-row">
+                <div class="swatch" style="background:${color}"></div>
+                <div class="category-info">
+                  <div class="category-name">${capitalize(c.name)} ${c.count > 1 ? `<span class="count">×${c.count}</span>` : ''}</div>
+                  <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.avg*100)}%;background:${color}"></div></div>
+                </div>
+                <div class="category-pct">${pctLabel}</div>
               </div>
-              <div class="category-pct">${pctLabel}</div>
+              ${feature ? `<div class="feature-note">ⓘ Typically identified by: ${feature}</div>` : ''}
             </div>`;
         });
         categoryListEl.innerHTML = catHtml;
@@ -947,13 +1223,19 @@
           if (i === 0) topBroadName = name.toLowerCase();
           const color = colorForClass(name + '_broad');
           broadHtml += `
-            <div class="category-row">
-              <div class="swatch" style="background:${color}"></div>
-              <div class="category-info">
-                <div class="category-name">${capitalize(name)}</div>
-                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.probability*100)}%;background:${color}"></div></div>
+            <div class="category-row-wrap">
+              <div class="category-row">
+                <div class="swatch" style="background:${color}"></div>
+                <div class="category-info">
+                  <div class="category-name">${capitalize(name)}</div>
+                  <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.probability*100)}%;background:${color}"></div></div>
+                </div>
+                <div class="category-pct">${Math.round(p.probability * 100)}%</div>
               </div>
-              <div class="category-pct">${Math.round(p.probability * 100)}%</div>
+              <div class="why-row">
+                <button class="why-btn" data-why-label="${escapeHtml(name)}" data-why-target="whyPanel-${i}">🔥 Why?</button>
+              </div>
+              <div class="heatmap-panel" id="whyPanel-${i}" style="display:none"></div>
             </div>`;
         });
         broadListEl.innerHTML = broadHtml;
