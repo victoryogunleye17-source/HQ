@@ -6,6 +6,7 @@
   <title>HQ</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
   <style>
     :root {
       --bg: #0f0f13;
@@ -230,11 +231,33 @@
       color: var(--accent);
     }
 
+    .section-label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 1rem 0 0.5rem;
+      font-weight: 700;
+    }
+
+    .section-label:first-of-type { margin-top: 0; }
+
     #summary {
       font-size: 1rem;
       line-height: 1.55;
       color: var(--text);
-      margin-bottom: 1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .caveat-note {
+      font-size: 0.85rem;
+      color: var(--warn);
+      background: rgba(255,179,0,0.08);
+      border: 1px solid rgba(255,179,0,0.25);
+      border-radius: 10px;
+      padding: 0.6rem 0.75rem;
+      margin-top: 0.6rem;
+      line-height: 1.4;
     }
 
     .category-list {
@@ -430,15 +453,21 @@
     <div class="result-card" id="resultCard">
       <h2>What I saw</h2>
       <div id="summary"></div>
+      <div id="caveatNote"></div>
+
+      <div class="section-label" id="localizedLabel" style="display:none">Localized objects (80-category detector, with position)</div>
       <div class="category-list" id="categoryList"></div>
       <div id="lowConfNote"></div>
       <button class="details-toggle" id="detailsToggle" style="display:none">▸ Show every individual detection</button>
       <div class="details-list" id="detailsList"></div>
+
+      <div class="section-label" id="broadLabel" style="display:none">Broader guesses (1000-category classifier, whole image, no position)</div>
+      <div class="category-list" id="broadList"></div>
     </div>
   </div>
 
   <footer>
-    HQ · Runs entirely in your browser, nothing is uploaded anywhere · Powered by TensorFlow.js + COCO-SSD (recognizes 80 everyday object categories — people, vehicles, animals, furniture, food, electronics, and more — and can flag up to 100 individual object instances in one shot)
+    HQ · Runs entirely in your browser, nothing is uploaded anywhere · Two on-device models: COCO-SSD (80 categories, gives positions/boxes) + MobileNet (1000 ImageNet categories, whole-image, catches things COCO-SSD's narrow vocabulary misses) · Even together, an object outside both vocabularies will still be misidentified — that's a hard limit of running vision fully offline in a browser
   </footer>
 
   <script>
@@ -453,10 +482,14 @@
     const loader = document.getElementById('loader');
     const resultCard = document.getElementById('resultCard');
     const summaryEl = document.getElementById('summary');
+    const caveatNoteEl = document.getElementById('caveatNote');
+    const localizedLabel = document.getElementById('localizedLabel');
     const categoryListEl = document.getElementById('categoryList');
     const lowConfNoteEl = document.getElementById('lowConfNote');
     const detailsToggle = document.getElementById('detailsToggle');
     const detailsList = document.getElementById('detailsList');
+    const broadLabel = document.getElementById('broadLabel');
+    const broadListEl = document.getElementById('broadList');
     const overlay = document.getElementById('permissionOverlay');
     const camTag = document.getElementById('camTag');
     const camTagText = document.getElementById('camTagText');
@@ -464,7 +497,8 @@
     const sensitivitySelect = document.getElementById('sensitivity');
 
     let stream = null;
-    let model = null;
+    let cocoModel = null;
+    let netModel = null;
     let isAnalyzing = false;
     let facingMode = 'environment';
     let hasMultipleCameras = false;
@@ -478,7 +512,6 @@
       statusEl.className = 'status' + (type ? ' ' + type : '');
     }
 
-    // Consistent color per class name
     function colorForClass(name) {
       let hash = 0;
       for (let i = 0; i < name.length; i++) {
@@ -488,21 +521,34 @@
       return `hsl(${hue}, 80%, 60%)`;
     }
 
-    async function loadModel() {
-      setStatus('Loading vision model (higher accuracy, may take a few seconds)…');
-      try {
-        model = await cocoSsd.load({ base: 'mobilenet_v2' });
-        setStatus('Model ready. Point camera and snap!');
-      } catch (err) {
-        console.error(err);
+    async function loadModels() {
+      setStatus('Loading vision models (higher accuracy, may take a few seconds)…');
+      const results = await Promise.allSettled([
+        cocoSsd.load({ base: 'mobilenet_v2' }),
+        mobilenet.load({ version: 2, alpha: 1.0 })
+      ]);
+
+      if (results[0].status === 'fulfilled') {
+        cocoModel = results[0].value;
+      } else {
+        console.error(results[0].reason);
         try {
-          // Fallback to lighter model if the full one fails (slow connection, etc.)
-          model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-          setStatus('Model ready (lite mode). Point camera and snap!');
-        } catch (err2) {
-          console.error(err2);
-          setStatus('Failed to load model. Check your connection.', 'error');
-        }
+          cocoModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        } catch (e) { console.error(e); }
+      }
+
+      if (results[1].status === 'fulfilled') {
+        netModel = results[1].value;
+      } else {
+        console.error(results[1].reason);
+      }
+
+      if (cocoModel && netModel) {
+        setStatus('Models ready. Point camera and snap!');
+      } else if (cocoModel || netModel) {
+        setStatus('Model ready (partial). Point camera and snap!');
+      } else {
+        setStatus('Failed to load models. Check your connection.', 'error');
       }
     }
 
@@ -534,7 +580,7 @@
         sensitivityRow.style.display = 'flex';
         setStatus('Camera ready. Snap when you see something interesting.');
         checkMultipleCameras();
-        if (!model) loadModel();
+        if (!cocoModel && !netModel) loadModels();
       } catch (err) {
         console.error(err);
         let msg = 'Could not access camera. ';
@@ -609,88 +655,9 @@
       });
     }
 
-    function buildResults(predictions) {
-      const totalCount = predictions.length;
-
-      if (totalCount === 0) {
-        summaryEl.innerHTML = `<p>I couldn't confidently identify any of the 80 common object types this model knows in this photo. Try lowering the "Detection detail" setting, getting closer, or improving the lighting.</p>`;
-        categoryListEl.innerHTML = '';
-        lowConfNoteEl.innerHTML = '';
-        detailsToggle.style.display = 'none';
-        return;
-      }
-
-      // Group by class
-      const groups = {};
-      predictions.forEach(p => {
-        if (!groups[p.class]) groups[p.class] = [];
-        groups[p.class].push(p.score);
-      });
-
-      const categories = Object.entries(groups).map(([name, scores]) => {
-        const count = scores.length;
-        const avg = scores.reduce((a, b) => a + b, 0) / count;
-        const max = Math.max(...scores);
-        const min = Math.min(...scores);
-        return { name, count, avg, max, min };
-      }).sort((a, b) => b.count - a.count || b.avg - a.avg);
-
-      const confidentCats = categories.filter(c => c.max >= CONFIDENT_THRESHOLD);
-      const uncertainCats = categories.filter(c => c.max < CONFIDENT_THRESHOLD);
-
-      // Summary sentence
-      const catCount = categories.length;
-      let summaryHtml = `<p><strong>${totalCount}</strong> object${totalCount !== 1 ? 's' : ''} detected across <strong>${catCount}</strong> categor${catCount !== 1 ? 'ies' : 'y'}.</p>`;
-
-      if (confidentCats.length > 0) {
-        const topNames = confidentCats.slice(0, 4).map(c =>
-          c.count > 1 ? `${c.count} ${pluralize(c.name, c.count)}` : c.name
-        );
-        let phrase = topNames.length === 1
-          ? topNames[0]
-          : topNames.slice(0, -1).join(', ') + ' and ' + topNames[topNames.length - 1];
-        if (confidentCats.length > 4) phrase += `, plus ${confidentCats.length - 4} more type${confidentCats.length - 4 !== 1 ? 's' : ''}`;
-        summaryHtml += `<p style="margin-top:0.4rem">Clearly visible: ${phrase}.</p>`;
-      }
-      summaryEl.innerHTML = summaryHtml;
-
-      // Category bars
-      let catHtml = '';
-      categories.forEach(c => {
-        const color = colorForClass(c.name);
-        const pctLabel = c.min === c.max
-          ? `${Math.round(c.avg * 100)}%`
-          : `${Math.round(c.min * 100)}–${Math.round(c.max * 100)}%`;
-        catHtml += `
-          <div class="category-row">
-            <div class="swatch" style="background:${color}"></div>
-            <div class="category-info">
-              <div class="category-name">${capitalize(c.name)} ${c.count > 1 ? `<span class="count">×${c.count}</span>` : ''}</div>
-              <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.avg*100)}%;background:${color}"></div></div>
-            </div>
-            <div class="category-pct">${pctLabel}</div>
-          </div>`;
-      });
-      categoryListEl.innerHTML = catHtml;
-
-      // Low confidence note
-      if (uncertainCats.length > 0) {
-        const names = uncertainCats.map(c => c.name).join(', ');
-        lowConfNoteEl.innerHTML = `<p class="low-conf-note">⚠ Lower-confidence guesses (under 50%), possibly wrong: ${names}.</p>`;
-      } else {
-        lowConfNoteEl.innerHTML = '';
-      }
-
-      // Full individual detection list
-      const sortedAll = [...predictions].sort((a, b) => b.score - a.score);
-      let detailsHtml = '';
-      sortedAll.forEach((p, i) => {
-        const color = colorForClass(p.class);
-        detailsHtml += `<div class="detail-item"><span class="dsw" style="background:${color}"></span><span class="dname">${i + 1}. ${capitalize(p.class)}</span><span>${Math.round(p.score * 100)}%</span></div>`;
-      });
-      detailsList.innerHTML = detailsHtml;
-      detailsToggle.style.display = 'inline-flex';
-      detailsToggle.textContent = `▸ Show every individual detection (${totalCount})`;
+    function cleanClassName(raw) {
+      // ImageNet labels often look like "laptop, laptop computer" - take the first term
+      return raw.split(',')[0].trim();
     }
 
     function pluralize(word, count) {
@@ -704,9 +671,137 @@
       return str.charAt(0).toUpperCase() + str.slice(1);
     }
 
+    function buildResults(predictions, netPredictions) {
+      const totalCount = predictions.length;
+
+      // ---- Localized (COCO-SSD) section ----
+      if (totalCount === 0) {
+        localizedLabel.style.display = 'none';
+        categoryListEl.innerHTML = '';
+        lowConfNoteEl.innerHTML = '';
+        detailsToggle.style.display = 'none';
+      } else {
+        localizedLabel.style.display = 'block';
+
+        const groups = {};
+        predictions.forEach(p => {
+          if (!groups[p.class]) groups[p.class] = [];
+          groups[p.class].push(p.score);
+        });
+
+        const categories = Object.entries(groups).map(([name, scores]) => {
+          const count = scores.length;
+          const avg = scores.reduce((a, b) => a + b, 0) / count;
+          const max = Math.max(...scores);
+          const min = Math.min(...scores);
+          return { name, count, avg, max, min };
+        }).sort((a, b) => b.count - a.count || b.avg - a.avg);
+
+        const uncertainCats = categories.filter(c => c.max < CONFIDENT_THRESHOLD);
+
+        let catHtml = '';
+        categories.forEach(c => {
+          const color = colorForClass(c.name);
+          const pctLabel = c.min === c.max
+            ? `${Math.round(c.avg * 100)}%`
+            : `${Math.round(c.min * 100)}–${Math.round(c.max * 100)}%`;
+          catHtml += `
+            <div class="category-row">
+              <div class="swatch" style="background:${color}"></div>
+              <div class="category-info">
+                <div class="category-name">${capitalize(c.name)} ${c.count > 1 ? `<span class="count">×${c.count}</span>` : ''}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.avg*100)}%;background:${color}"></div></div>
+              </div>
+              <div class="category-pct">${pctLabel}</div>
+            </div>`;
+        });
+        categoryListEl.innerHTML = catHtml;
+
+        lowConfNoteEl.innerHTML = uncertainCats.length > 0
+          ? `<p class="low-conf-note">⚠ Lower-confidence guesses (under 50%), possibly wrong: ${uncertainCats.map(c => c.name).join(', ')}.</p>`
+          : '';
+
+        const sortedAll = [...predictions].sort((a, b) => b.score - a.score);
+        let detailsHtml = '';
+        sortedAll.forEach((p, i) => {
+          const color = colorForClass(p.class);
+          detailsHtml += `<div class="detail-item"><span class="dsw" style="background:${color}"></span><span class="dname">${i + 1}. ${capitalize(p.class)}</span><span>${Math.round(p.score * 100)}%</span></div>`;
+        });
+        detailsList.innerHTML = detailsHtml;
+        detailsToggle.style.display = 'inline-flex';
+        detailsToggle.textContent = `▸ Show every individual detection (${totalCount})`;
+      }
+
+      // ---- Broad (MobileNet/ImageNet) section ----
+      let topBroadName = null;
+      if (netPredictions && netPredictions.length > 0) {
+        broadLabel.style.display = 'block';
+        let broadHtml = '';
+        netPredictions.forEach((p, i) => {
+          const name = cleanClassName(p.className);
+          if (i === 0) topBroadName = name.toLowerCase();
+          const color = colorForClass(name + '_broad');
+          broadHtml += `
+            <div class="category-row">
+              <div class="swatch" style="background:${color}"></div>
+              <div class="category-info">
+                <div class="category-name">${capitalize(name)}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.probability*100)}%;background:${color}"></div></div>
+              </div>
+              <div class="category-pct">${Math.round(p.probability * 100)}%</div>
+            </div>`;
+        });
+        broadListEl.innerHTML = broadHtml;
+      } else {
+        broadLabel.style.display = 'none';
+        broadListEl.innerHTML = '';
+      }
+
+      // ---- Summary + honesty caveats ----
+      let summaryHtml = '';
+      let caveatHtml = '';
+
+      if (totalCount === 0 && !topBroadName) {
+        summaryHtml = `<p>Neither model could confidently place this photo — try better lighting, get closer, or fill more of the frame with the subject.</p>`;
+      } else if (totalCount === 0 && topBroadName) {
+        summaryHtml = `<p>No positioned objects from the 80-category detector, but the broader classifier's best guess for the whole image is <strong>${capitalize(topBroadName)}</strong>.</p>`;
+        caveatHtml = `<div class="caveat-note">⚠ This is a whole-image guess from a 1000-category general classifier, not a confirmed identification — it has no bounding box and no localization. Treat it as a hint, not a fact.</div>`;
+      } else {
+        const groups = {};
+        predictions.forEach(p => { (groups[p.class] = groups[p.class] || []).push(p.score); });
+        const categories = Object.entries(groups).map(([name, scores]) => ({
+          name, count: scores.length, avg: scores.reduce((a,b)=>a+b,0)/scores.length, max: Math.max(...scores)
+        })).sort((a, b) => b.count - a.count || b.avg - a.avg);
+        const confidentCats = categories.filter(c => c.max >= CONFIDENT_THRESHOLD);
+        const catCount = categories.length;
+
+        summaryHtml = `<p><strong>${totalCount}</strong> object${totalCount !== 1 ? 's' : ''} detected across <strong>${catCount}</strong> categor${catCount !== 1 ? 'ies' : 'y'} by the localized detector.</p>`;
+
+        if (confidentCats.length > 0) {
+          const topNames = confidentCats.slice(0, 4).map(c => c.count > 1 ? `${c.count} ${pluralize(c.name, c.count)}` : c.name);
+          let phrase = topNames.length === 1 ? topNames[0] : topNames.slice(0, -1).join(', ') + ' and ' + topNames[topNames.length - 1];
+          if (confidentCats.length > 4) phrase += `, plus ${confidentCats.length - 4} more type${confidentCats.length - 4 !== 1 ? 's' : ''}`;
+          summaryHtml += `<p style="margin-top:0.4rem">Localized guess: ${phrase}.</p>`;
+        }
+
+        // Disagreement check: does the top localized class match the top broad guess?
+        const topLocalized = categories[0] ? categories[0].name.toLowerCase() : null;
+        const isSingleGenericDetection = totalCount <= 2 && catCount === 1;
+
+        if (topBroadName && topLocalized && !topBroadName.includes(topLocalized) && !topLocalized.includes(topBroadName)) {
+          caveatHtml = `<div class="caveat-note">⚠ My two passes disagree: the localized 80-category detector says "${capitalize(topLocalized)}", but the broader 1000-category classifier's top guess is "${capitalize(topBroadName)}". When they disagree, neither should be taken as confirmed — the real object may be outside both models' vocabularies. Check the "Broader guesses" list below for other candidates.</div>`;
+        } else if (isSingleGenericDetection) {
+          caveatHtml = `<div class="caveat-note">⚠ Only one region matched, using a model limited to 80 categories. If the object doesn't clearly belong to any of them (people, vehicles, animals, furniture, everyday electronics, food, sports gear, etc.), it will still report a confident-sounding percentage for its closest guess — that's a hard limitation of this offline model, not a sign the number is trustworthy.</div>`;
+        }
+      }
+
+      summaryEl.innerHTML = summaryHtml;
+      caveatNoteEl.innerHTML = caveatHtml;
+    }
+
     async function analyzeImage(imgElement) {
-      if (!model) {
-        setStatus('Model still loading… please wait a moment and try again.', 'error');
+      if (!cocoModel && !netModel) {
+        setStatus('Models still loading… please wait a moment and try again.', 'error');
         return;
       }
 
@@ -719,16 +814,20 @@
       const minScore = parseFloat(sensitivitySelect.value);
 
       try {
-        const predictions = await model.detect(imgElement, MAX_BOXES, minScore);
+        const [predictions, netPredictions] = await Promise.all([
+          cocoModel ? cocoModel.detect(imgElement, MAX_BOXES, minScore) : Promise.resolve([]),
+          netModel ? netModel.classify(imgElement, 5) : Promise.resolve([])
+        ]);
 
-        drawBoxes(predictions);
+        if (predictions.length > 0) drawBoxes(predictions);
         lastCaptureDataUrl = canvas.toDataURL('image/jpeg', 0.92);
         downloadBtn.style.display = 'inline-flex';
 
-        buildResults(predictions);
+        buildResults(predictions, netPredictions);
 
         resultCard.classList.add('visible');
-        setStatus(predictions.length > 0 ? 'Analysis complete.' : 'Analysis complete — nothing recognized.', predictions.length > 0 ? 'success' : '');
+        const gotSomething = predictions.length > 0 || netPredictions.length > 0;
+        setStatus(gotSomething ? 'Analysis complete.' : 'Analysis complete — nothing recognized.', gotSomething ? 'success' : '');
       } catch (err) {
         console.error(err);
         setStatus('Something went wrong while analyzing the image.', 'error');
@@ -753,12 +852,16 @@
       video.style.display = 'block';
       resultCard.classList.remove('visible');
       summaryEl.innerHTML = '';
+      caveatNoteEl.innerHTML = '';
+      localizedLabel.style.display = 'none';
       categoryListEl.innerHTML = '';
       lowConfNoteEl.innerHTML = '';
       detailsList.innerHTML = '';
       detailsList.classList.remove('visible');
       detailsToggle.style.display = 'none';
       detailsToggle.textContent = '▸ Show every individual detection';
+      broadLabel.style.display = 'none';
+      broadListEl.innerHTML = '';
       snapBtn.style.display = 'inline-flex';
       retryBtn.style.display = 'none';
       downloadBtn.style.display = 'none';
